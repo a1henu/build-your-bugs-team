@@ -1,0 +1,49 @@
+# 操作系统相关
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 编辑器相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+
+# 个人笔记和草稿
+personal-notes/
+drafts/
+*.draft
+
+# 敏感信息
+*.key
+*.pem
+config/secrets.yml
+.env
+
+# 编译输出
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 依赖目录
+node_modules/
+vendor/
+
+# 备份文件
+*.bak
+*.backup
+*~
+
+# 项目特定
+# 根据项目需要添加特定的忽略规则
