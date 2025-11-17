@@ -53,7 +53,7 @@ class Evaluator:
             self.teacher = teacher
             self.students = students or []
         
-        self.system_prompt = load_prompt("system_prompt.txt")
+        self.system_prompt = load_prompt("system_prompt_Evaluate.txt")
         self.few_shot_examples = self._load_few_shot_examples()
     def _load_few_shot_examples(self):
         """加载 few-shot learning 示例"""
@@ -110,7 +110,38 @@ class Evaluator:
         )
         return completion.choices[0].message.content
 
+class Polisher:
+    def __init__(self, answer: str, comment:str):
+        self.answer = answer
+        self.comment = comment
+        self.system_prompt = load_prompt("system_prompt_Polish.txt")
+    def generate_prompt(self):
+        prompt = []
+        prompt.append({'role': 'system', 'content': self.system_prompt})
+        prompt.append({'role': 'user', 'content':
+        f"""**[Original Essay]**
+{self.answer}
+
+**[Comment]**
+{self.comment}
+"""
+        })
+        return prompt
+    def generate_response(self):
+        client = OpenAI(
+            api_key=os.getenv("DASHSCOPE_API_KEY"),
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+        completion = client.chat.completions.create(
+            model="qwen-plus", 
+            messages=self.generate_prompt()
+        )
+        return completion.choices[0].message.content
+
 if __name__ == "__main__":
     evaluator = Evaluator(question_file="test.yaml")
     answer = "Claire presents a convincing argument indicating that the biggest mistake people make when buying tech products is mismatch of the product's capability and actual need. Admittedlty, mismatch would cause unneccesary cost wich is diffinetely bad. However, considering people can gradually develop their needs that match the product will, I am inclined that the biggest mistake is overlooking detailed information and making impulsive purchases. Nowadays, more and more companies lie to their consumers about the detailed configuration about their products. Mistakenly buying one machine that does not have the ideal capability you want will not only influence your work and study, but also waste your money. For example, my old grandpa bought a television impulsively simply because the client told him that the TV has cutting-edge technology while its resolution is actually awful. Finally my grandpa had to buy a new one for its bad experience."
-    print(evaluator.generate_response(answer))
+    comment = evaluator.generate_response(answer)
+    polisher = Polisher(answer, comment)
+    polished_answer = polisher.generate_response()
+    print(f"Comment: {comment}\n\nPolished Answer: {polished_answer}")
