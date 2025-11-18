@@ -9,33 +9,41 @@ load_dotenv()
 PROMPT_DIR = Path(__file__).parent / "prompt"
 PROBLEMS_DIR = Path(__file__).parent / "problems"
 
+
 def load_prompt(filename: str) -> str:
     """从文件中加载提示词"""
     file_path = PROMPT_DIR / filename
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         return f.read().strip()
+
 
 def load_question(yaml_file: str) -> dict:
     """从 YAML 文件加载题目数据
     Args:
         yaml_file: YAML 文件名（如 "test.yaml"）
-    
+
     Returns:
         dict: 包含 instruction, teacher, students 的字典
     """
     file_path = PROBLEMS_DIR / yaml_file
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    
+
     return {
-        'instruction': data.get('instruction', ''),
-        'teacher': data.get('teacher', ''),
-        'students': data.get('students', [])
+        "instruction": data.get("instruction", ""),
+        "teacher": data.get("teacher", ""),
+        "students": data.get("students", []),
     }
 
+
 class Evaluator:
-    def __init__(self, instruction: str = None, teacher: str = None, students: list = None, 
-                 question_file: str = None):
+    def __init__(
+        self,
+        instruction: str = None,
+        teacher: str = None,
+        students: list = None,
+        question_file: str = None,
+    ):
         """初始化评估器
         Args:
             instruction: 指令文本
@@ -45,48 +53,65 @@ class Evaluator:
         """
         if question_file:
             question_data = load_question(question_file)
-            self.instruction = question_data['instruction']
-            self.teacher = question_data['teacher']
-            self.students = question_data['students']
+            self.instruction = question_data["instruction"]
+            self.teacher = question_data["teacher"]
+            self.students = question_data["students"]
         else:
             self.instruction = instruction
             self.teacher = teacher
             self.students = students or []
-        
+
         self.system_prompt = load_prompt("system_prompt_Evaluate.txt")
         self.few_shot_examples = self._load_few_shot_examples()
+
     def _load_few_shot_examples(self):
         """加载 few-shot learning 示例"""
         examples = []
         try:
             user_1 = load_prompt("user_prompt_1.txt")
             assistant_1 = load_prompt("assistant_prompt_1.txt")
-            if user_1 and not user_1.startswith("#") and assistant_1 and not assistant_1.startswith("#"):
-                examples.append([
-                    {'role': 'user', 'content': user_1},
-                    {'role': 'assistant', 'content': assistant_1}
-                ])
+            if (
+                user_1
+                and not user_1.startswith("#")
+                and assistant_1
+                and not assistant_1.startswith("#")
+            ):
+                examples.append(
+                    [
+                        {"role": "user", "content": user_1},
+                        {"role": "assistant", "content": assistant_1},
+                    ]
+                )
         except FileNotFoundError:
             pass
         try:
             user_2 = load_prompt("user_prompt_2.txt")
             assistant_2 = load_prompt("assistant_prompt_2.txt")
-            if user_2 and not user_2.startswith("#") and assistant_2 and not assistant_2.startswith("#"):
-                examples.append([
-                    {'role': 'user', 'content': user_2},
-                    {'role': 'assistant', 'content': assistant_2}
-                ])
+            if (
+                user_2
+                and not user_2.startswith("#")
+                and assistant_2
+                and not assistant_2.startswith("#")
+            ):
+                examples.append(
+                    [
+                        {"role": "user", "content": user_2},
+                        {"role": "assistant", "content": assistant_2},
+                    ]
+                )
         except FileNotFoundError:
             pass
         return examples
-    
+
     def generate_prompt(self, answer: str):
         prompt = []
-        prompt.append({'role': 'system', 'content': self.system_prompt})
+        prompt.append({"role": "system", "content": self.system_prompt})
         for example_pair in self.few_shot_examples:
             prompt.extend(example_pair)
-        prompt.append({'role': 'user', 'content':
-        f"""**[Test Question Context]**
+        prompt.append(
+            {
+                "role": "user",
+                "content": f"""**[Test Question Context]**
         **Instruction:** {self.instruction}
 
 {self.teacher}
@@ -96,47 +121,58 @@ class Evaluator:
 {self.students[1]}
 
 **[Student's Response to Evaluate]**
-{answer}"""
-        })
+{answer}""",
+            }
+        )
         return prompt
-    def generate_response(self, answer: str):
+
+    def generate_response(self, answer: str, stream: bool = False):
         client = OpenAI(
             api_key=os.getenv("DASHSCOPE_API_KEY"),
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         )
         completion = client.chat.completions.create(
-            model="qwen-plus", 
-            messages=self.generate_prompt(answer)
+            model="qwen-plus", messages=self.generate_prompt(answer), stream=stream
         )
+        if stream:
+            return completion
         return completion.choices[0].message.content
 
+
 class Polisher:
-    def __init__(self, answer: str, comment:str):
+    def __init__(self, answer: str, comment: str):
         self.answer = answer
         self.comment = comment
         self.system_prompt = load_prompt("system_prompt_Polish.txt")
+
     def generate_prompt(self):
         prompt = []
-        prompt.append({'role': 'system', 'content': self.system_prompt})
-        prompt.append({'role': 'user', 'content':
-        f"""**[Original Essay]**
+        prompt.append({"role": "system", "content": self.system_prompt})
+        prompt.append(
+            {
+                "role": "user",
+                "content": f"""**[Original Essay]**
 {self.answer}
 
 **[Comment]**
 {self.comment}
-"""
-        })
+""",
+            }
+        )
         return prompt
-    def generate_response(self):
+
+    def generate_response(self, stream: bool = False):
         client = OpenAI(
             api_key=os.getenv("DASHSCOPE_API_KEY"),
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         )
         completion = client.chat.completions.create(
-            model="qwen-plus", 
-            messages=self.generate_prompt()
+            model="qwen-plus", messages=self.generate_prompt(), stream=stream
         )
+        if stream:
+            return completion
         return completion.choices[0].message.content
+
 
 if __name__ == "__main__":
     evaluator = Evaluator(question_file="test.yaml")

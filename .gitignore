@@ -49,3 +49,4 @@ vendor/
 # 根据项目需要添加特定的忽略规则
 
 projects/demo/__pycache__/
+projects/demo/frontend/package-lock.json

@@ -19,3 +19,16 @@ curl -X POST http://127.0.0.1:5000/grade_and_polish \
   -H "Content-Type: application/json" \
   -d '{"answer":"...", "question_file":"..."}'
 ```
+
+## Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+You can access the frontend at `http://localhost:5173` by running:
+
+```bash
+http://localhost:5173
