@@ -314,6 +314,7 @@ const emit = defineEmits<{
 	background-color: var(--bg-color);
 	color: var(--text-color);
 	height: 100vh;
+	width: 100%;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
@@ -407,7 +408,7 @@ const emit = defineEmits<{
 	padding: 20px;
 	gap: 20px;
 	overflow: hidden;
-	max-width: 1600px;
+	/* max-width: 1600px; */
 	margin: 0 auto;
 	width: 100%;
 }

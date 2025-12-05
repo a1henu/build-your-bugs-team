@@ -216,7 +216,9 @@ export async function downloadTelemetryLog(): Promise<Blob> {
  * 题目数据接口
  */
 export interface QuestionData {
+	id?: string;
 	subject: string;
+	instruction?: string; // 题目指令内容
 	professor: {
 		name: string;
 		avatar: string;

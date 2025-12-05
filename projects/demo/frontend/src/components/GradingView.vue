@@ -8,6 +8,8 @@
 			:loading="loading"
 			:error="error"
 			:is-empty="isEmpty"
+			:question="question"
+			:question-content="questionContent"
 			@clear="handleClear"
 		/>
 	</main>
@@ -19,6 +21,7 @@ import GradingResults from "./grading/GradingResults.vue";
 import {
 	gradeAndPolishStreamById,
 	getHistoryById,
+	getQuestionData,
 	type StreamEvent,
 } from "../api/service";
 import type { History } from "../api/history";
@@ -30,6 +33,8 @@ const props = defineProps<{
 // 响应式数据
 const answer = ref("");
 const polishedAnswer = ref("");
+const question = ref("");
+const questionContent = ref("");
 const loading = ref(false);
 const error = ref<string | null>(null);
 const currentStage = ref<"idle" | "evaluating" | "polishing" | "done">("idle");
@@ -51,6 +56,47 @@ const emit = defineEmits<{
 	(e: "clear"): void;
 }>();
 
+// 加载问题内容
+const loadQuestionContent = async (questionId: string) => {
+	if (!questionId) return;
+	try {
+		const questionData = await getQuestionData(questionId);
+		// 组合完整的题目内容：instruction + professor prompt + students responses
+		const parts: string[] = [];
+
+		// 添加 instruction
+		if (questionData.instruction) {
+			parts.push(questionData.instruction);
+		}
+
+		// 添加教授的问题
+		if (questionData.professor?.prompt) {
+			parts.push("");
+			parts.push(
+				`**Professor (${questionData.professor.name}):** ${questionData.professor.prompt}`
+			);
+		}
+
+		// 添加学生的回复
+		if (questionData.students && questionData.students.length > 0) {
+			questionData.students.forEach((student, index) => {
+				if (student.response) {
+					parts.push("");
+					parts.push(
+						`**Student ${index + 1} (${student.name}):** ${student.response}`
+					);
+				}
+			});
+		}
+
+		questionContent.value = parts.join("\n");
+	} catch (err) {
+		console.error("Load question content error:", err);
+		// 如果加载失败，不影响主流程
+		questionContent.value = "";
+	}
+};
+
 // 加载历史记录数据
 const loadHistoryData = async (historyId: string | number) => {
 	loading.value = true;
@@ -64,6 +110,11 @@ const loadHistoryData = async (historyId: string | number) => {
 		}
 		answer.value = history.answer || "";
 		polishedAnswer.value = history.polished_answer || "";
+		question.value = history.question || "";
+		// 加载问题内容
+		if (history.question) {
+			await loadQuestionContent(history.question);
+		}
 		// 使用后端返回的解析数据
 		if ((history as any).parsed_comment) {
 			parsedComment.value = (history as any).parsed_comment;
@@ -104,6 +155,16 @@ const streamGradingResult = async (historyId: string | number) => {
 		score: null,
 		raw_text: "",
 	};
+	// 加载问题内容
+	try {
+		const history: History = await getHistoryById(historyId);
+		if (history && history.question) {
+			question.value = history.question;
+			await loadQuestionContent(history.question);
+		}
+	} catch (err) {
+		console.error("Load question in stream error:", err);
+	}
 
 	try {
 		await gradeAndPolishStreamById(historyId, (event: StreamEvent) => {
@@ -203,6 +264,11 @@ watch(
 					return;
 				}
 				answer.value = history.answer || "";
+				question.value = history.question || "";
+				// 加载问题内容
+				if (history.question) {
+					await loadQuestionContent(history.question);
+				}
 				// 如果已有完整数据，直接显示
 				if (history.comment && history.polished_answer) {
 					polishedAnswer.value = history.polished_answer;

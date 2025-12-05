@@ -16,6 +16,73 @@
 
 		<!-- 正常内容 -->
 		<template v-else>
+			<!-- 问题内容展示 -->
+			<div v-if="questionContent" class="question-section">
+				<div class="question-header">
+					<h3>题目</h3>
+					<button
+						@click="toggleQuestionExpand"
+						class="toggle-btn"
+						:class="{ expanded: isQuestionExpanded }"
+					>
+						<span v-if="isQuestionExpanded">收起</span>
+						<span v-else>展开</span>
+						<svg
+							class="toggle-icon"
+							:class="{ rotated: isQuestionExpanded }"
+							width="16"
+							height="16"
+							viewBox="0 0 16 16"
+							fill="none"
+							xmlns="http://www.w3.org/2000/svg"
+						>
+							<path
+								d="M4 6L8 10L12 6"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+						</svg>
+					</button>
+				</div>
+				<div
+					class="question-content"
+					:class="{ collapsed: !isQuestionExpanded }"
+				>
+					<div class="text-content" v-html="formattedQuestionContent"></div>
+				</div>
+			</div>
+
+			<!-- 原文和润色后对比 -->
+			<div class="comparison-section">
+				<div class="comparison-panel">
+					<div class="panel-header">
+						<h3>原文</h3>
+					</div>
+					<div class="panel-content">
+						<div class="text-content">{{ answer }}</div>
+					</div>
+				</div>
+
+				<div class="comparison-panel">
+					<div class="panel-header">
+						<h3>润色后</h3>
+						<span
+							v-if="currentStage === 'polishing' && !polishedAnswer"
+							class="loading-indicator"
+						>
+							生成中...
+						</span>
+					</div>
+					<div class="panel-content">
+						<div class="text-content">
+							{{ polishedAnswer || "正在生成..." }}
+						</div>
+					</div>
+				</div>
+			</div>
+
 			<!-- 结构化评分区域 -->
 			<div class="evaluation-section">
 				<div class="evaluation-header">
@@ -33,6 +100,22 @@
 				</div>
 
 				<div class="evaluation-content">
+					<!-- 总评 -->
+					<div
+						class="evaluation-category overview-category"
+						v-if="parsedComment.overview || currentStage === 'evaluating'"
+					>
+						<div class="category-header overview-header">
+							<h4>总评</h4>
+						</div>
+						<div class="overview-content">
+							<div v-if="parsedComment.overview" class="text-content">
+								{{ parsedComment.overview }}
+							</div>
+							<div v-else class="text-content placeholder">正在生成总评...</div>
+						</div>
+					</div>
+
 					<!-- 优点 -->
 					<div
 						class="evaluation-category"
@@ -125,50 +208,6 @@
 							</li>
 						</ul>
 					</div>
-
-					<!-- 总评 -->
-					<div
-						class="evaluation-category overview-category"
-						v-if="parsedComment.overview || currentStage === 'evaluating'"
-					>
-						<div class="category-header overview-header">
-							<h4>总评</h4>
-						</div>
-						<div class="overview-content">
-							<div v-if="parsedComment.overview" class="text-content">
-								{{ parsedComment.overview }}
-							</div>
-							<div v-else class="text-content placeholder">正在生成总评...</div>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div class="comparison-section">
-				<div class="comparison-panel">
-					<div class="panel-header">
-						<h3>原文</h3>
-					</div>
-					<div class="panel-content">
-						<div class="text-content">{{ answer }}</div>
-					</div>
-				</div>
-
-				<div class="comparison-panel">
-					<div class="panel-header">
-						<h3>润色后</h3>
-						<span
-							v-if="currentStage === 'polishing' && !polishedAnswer"
-							class="loading-indicator"
-						>
-							生成中...
-						</span>
-					</div>
-					<div class="panel-content">
-						<div class="text-content">
-							{{ polishedAnswer || "正在生成..." }}
-						</div>
-					</div>
 				</div>
 			</div>
 
@@ -188,12 +227,13 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import type { ParsedComment } from "../../api/service";
 
 const router = useRouter();
 
-defineProps<{
+const props = defineProps<{
 	answer: string;
 	polishedAnswer: string;
 	parsedComment: ParsedComment;
@@ -201,11 +241,29 @@ defineProps<{
 	loading?: boolean;
 	error?: string | null;
 	isEmpty?: boolean;
+	question?: string;
+	questionContent?: string;
 }>();
 
 const emit = defineEmits<{
 	(e: "clear"): void;
 }>();
+
+// 问题内容折叠状态（默认折叠）
+const isQuestionExpanded = ref(false);
+
+const toggleQuestionExpand = () => {
+	isQuestionExpanded.value = !isQuestionExpanded.value;
+};
+
+// 格式化问题内容，将 markdown 格式转换为 HTML
+const formattedQuestionContent = computed(() => {
+	if (!props.questionContent) return "";
+	// 将 markdown 格式转换为 HTML
+	return props.questionContent
+		.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") // **bold** -> <strong>bold</strong>
+		.replace(/\n/g, "<br>"); // 换行符转换为 <br>
+});
 
 const handleGoHome = () => {
 	router.push("/home");
@@ -221,11 +279,124 @@ const handleGoHome = () => {
 	overflow-y: auto;
 }
 
+/* 问题内容区域 */
+.question-section {
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	border-radius: 10px;
+	background: rgba(255, 255, 255, 0.9);
+	backdrop-filter: blur(10px);
+	overflow: hidden;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+	transition: all 0.3s ease;
+	margin-bottom: 2rem;
+}
+
+.question-section:hover {
+	box-shadow: 0 6px 25px rgba(0, 0, 0, 0.1);
+}
+
+.question-header {
+	padding: 1.25rem 1.5rem;
+	background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+	border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.question-header h3 {
+	margin: 0;
+	font-size: 1.1rem;
+	font-weight: 700;
+	color: white;
+	letter-spacing: 0.5px;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-btn {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 1rem;
+	background: rgba(255, 255, 255, 0.2);
+	border: 1px solid rgba(255, 255, 255, 0.3);
+	border-radius: 6px;
+	color: white;
+	font-size: 0.875rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	backdrop-filter: blur(10px);
+}
+
+.toggle-btn:hover {
+	background: rgba(255, 255, 255, 0.3);
+	border-color: rgba(255, 255, 255, 0.5);
+}
+
+.toggle-btn.expanded {
+	background: rgba(255, 255, 255, 0.25);
+}
+
+.toggle-icon {
+	transition: transform 0.3s ease;
+	flex-shrink: 0;
+}
+
+.toggle-icon.rotated {
+	transform: rotate(180deg);
+}
+
+.question-content {
+	padding: 1.5rem;
+	overflow: hidden;
+	transition: all 0.3s ease;
+}
+
+.question-content.collapsed {
+	max-height: 120px;
+	overflow: hidden;
+	position: relative;
+}
+
+.question-content.collapsed::after {
+	content: "";
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 40px;
+	background: linear-gradient(
+		to bottom,
+		rgba(255, 255, 255, 0) 0%,
+		rgba(255, 255, 255, 0.8) 50%,
+		rgba(255, 255, 255, 1) 100%
+	);
+	pointer-events: none;
+}
+
+.question-content .text-content {
+	color: #2d3748;
+	line-height: 1.85;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	font-size: 0.95rem;
+	font-weight: 400;
+	letter-spacing: 0.15px;
+	text-align: justify;
+	transition: font-size 0.3s ease;
+}
+
+.question-content.collapsed .text-content {
+	font-size: 0.85rem;
+	line-height: 1.6;
+}
+
 .comparison-section {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 1rem;
-	margin-bottom: 1rem;
+	margin-bottom: 2rem;
 }
 
 .comparison-panel {
