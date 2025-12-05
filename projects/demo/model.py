@@ -1,16 +1,15 @@
 import os
 import time
-import yaml
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
 
 from telemetry import log_event
+from question_bank import get_question_bank
 
 load_dotenv()
 
 PROMPT_DIR = Path(__file__).parent / "prompt"
-PROBLEMS_DIR = Path(__file__).parent / "problems"
 
 
 def load_prompt(filename: str) -> str:
@@ -20,64 +19,38 @@ def load_prompt(filename: str) -> str:
         return f.read().strip()
 
 
-def load_question(yaml_file: str) -> dict:
-    """从 YAML 文件加载题目数据
-    Args:
-        yaml_file: YAML 文件名（如 "test.yaml"）
-
-    Returns:
-        dict: 包含 instruction, teacher, students 的字典
-    """
-    file_path = PROBLEMS_DIR / yaml_file
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    return {
-        "instruction": data.get("instruction", ""),
-        "teacher": data.get("teacher", ""),
-        "students": data.get("students", []),
-    }
-
-
-def get_question_files() -> list[str]:
-    """获取所有可用的题目文件列表
-
-    Returns:
-        list[str]: 题目文件名列表（如 ["test.yaml", "example.yaml"]）
-    """
-    if not PROBLEMS_DIR.exists():
-        return []
-
-    question_files = []
-    for file_path in PROBLEMS_DIR.glob("*.yaml"):
-        question_files.append(file_path.name)
-    for file_path in PROBLEMS_DIR.glob("*.yml"):
-        question_files.append(file_path.name)
-
-    return sorted(question_files)
-
-
 class Evaluator:
     def __init__(
         self,
+        question: str = None,
         instruction: str = None,
         teacher: str = None,
         students: list = None,
-        question_file: str = None,
     ):
         """初始化评估器
         Args:
-            instruction: 指令文本
-            teacher: 教师问题
-            students: 学生回复列表
-            question_file: YAML 文件名，如果提供则从文件加载（优先级高于直接传参）
+            question: 题名（字符串），如果提供则从题库加载（优先级最高）
+            instruction: 指令文本（当question未提供时使用）
+            teacher: 教师问题（当question未提供时使用）
+            students: 学生回复列表（当question未提供时使用）
         """
-        if question_file:
-            question_data = load_question(question_file)
+        self.question_markdown = None  # markdown格式字符串
+
+        if question:
+            # 从题库加载，使用新的markdown格式API
+            question_bank = get_question_bank()
+            question_obj = question_bank.get_question(question, only_valid=True)
+            if not question_obj:
+                raise ValueError(f"题目不存在或无效: {question}")
+            # 使用新的markdown格式API获取完整字符串
+            self.question_markdown = question_obj.to_markdown_string()
+            # 同时保存结构化数据
+            question_data = question_obj.to_evaluator_format()
             self.instruction = question_data["instruction"]
             self.teacher = question_data["teacher"]
             self.students = question_data["students"]
         else:
+            # 直接传参
             self.instruction = instruction
             self.teacher = teacher
             self.students = students or []
@@ -129,20 +102,31 @@ class Evaluator:
         prompt.append({"role": "system", "content": self.system_prompt})
         for example_pair in self.few_shot_examples:
             prompt.extend(example_pair)
-        prompt.append(
-            {
-                "role": "user",
-                "content": f"""**[Test Question Context]**
-        **Instruction:** {self.instruction}
+
+        # 如果使用question，优先使用markdown格式字符串
+        if self.question_markdown:
+            # 使用新的markdown格式API
+            user_content = f"""{self.question_markdown}
+
+**[Student's Response to Evaluate]**
+{answer}"""
+        else:
+            # 兼容旧格式：手动构建
+            students_text = "\n\n".join(self.students) if self.students else ""
+            user_content = f"""**[Test Question Context]**
+**Instruction:** {self.instruction}
 
 {self.teacher}
 
-{self.students[0]}
-
-{self.students[1]}
+{students_text}
 
 **[Student's Response to Evaluate]**
-{answer}""",
+{answer}"""
+
+        prompt.append(
+            {
+                "role": "user",
+                "content": user_content,
             }
         )
         return prompt

@@ -13,7 +13,7 @@ from flask_jwt_extended import (
 )
 from dotenv import load_dotenv
 
-from model import Evaluator, Polisher, get_question_files
+from model import Evaluator, Polisher
 from telemetry import log_event, new_request_id, LOG_FILE
 from user_models import db, User
 from auth import register_user, authenticate_user, create_tokens, get_current_user
@@ -23,6 +23,7 @@ from history_service import (
     get_history_by_id,
     delete_history,
 )
+from question_bank import get_question_bank
 
 load_dotenv()
 
@@ -87,11 +88,11 @@ def _after_request(response):
     duration_ms = None
     if hasattr(g, "start_time"):
         duration_ms = int((time.perf_counter() - g.start_time) * 1000)
-    question_file = None
+    question = None
     if request.is_json:
         payload = request.get_json(silent=True)
         if isinstance(payload, dict):
-            question_file = payload.get("question_file")
+            question = payload.get("question")
     log_event(
         "api.request.done",
         request_id=getattr(g, "request_id", None),
@@ -99,7 +100,7 @@ def _after_request(response):
         method=request.method,
         status=response.status_code,
         duration_ms=duration_ms,
-        question_file=question_file,
+        question=question,
     )
     return response
 
@@ -277,14 +278,51 @@ def download_logs():
 @app.route("/api/question/list", methods=["GET"])
 @app.route("/question/list", methods=["GET"])  # 兼容代理路径
 def get_question_list():
-    """获取所有可用的题目文件列表
+    """获取题目列表（从题库）
+
+    为了兼容前端，返回格式为 { files: string[] }，其中files是题目ID的字符串数组
+
+    Query参数:
+        only_valid: 是否只返回有效题目，默认true
+        offset: 偏移量，默认0
+        limit: 限制数量，默认不限制
+        format: 返回格式，可选值：
+            - "simple" (默认): 返回 { files: string[] } 格式（兼容前端）
+            - "detailed": 返回详细格式 { questions: [...], total: ... }
 
     Returns:
-        JSON: 题目文件列表
+        JSON: 题目列表
     """
     try:
-        files = get_question_files()
-        return jsonify({"files": files}), 200
+        question_bank = get_question_bank()
+        only_valid = request.args.get("only_valid", "true").lower() == "true"
+        offset = request.args.get("offset", 0, type=int)
+        limit = request.args.get("limit", None, type=int)
+        format_type = request.args.get("format", "simple").lower()
+
+        questions, total = question_bank.get_question_list(
+            only_valid=only_valid,
+            offset=offset,
+            limit=limit,
+        )
+
+        if format_type == "detailed":
+            # 返回详细格式
+            return (
+                jsonify(
+                    {
+                        "questions": questions,
+                        "total": total,
+                        "offset": offset,
+                        "limit": limit,
+                    }
+                ),
+                200,
+            )
+        else:
+            # 返回简单格式（兼容前端）：只返回题目ID的字符串数组
+            files = [q["id"] for q in questions]
+            return jsonify({"files": files}), 200
     except Exception as e:
         log_event(
             "get_question_list.error",
@@ -298,19 +336,89 @@ def get_question_list():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/question/statistics", methods=["GET"])
+@app.route("/question/statistics", methods=["GET"])  # 兼容代理路径
+def get_question_statistics():
+    """获取题库统计信息
+
+    Returns:
+        JSON: 统计信息，包含总数、有效数、无效数
+    """
+    try:
+        question_bank = get_question_bank()
+        stats = question_bank.get_statistics()
+        return jsonify(stats), 200
+    except Exception as e:
+        log_event(
+            "get_question_statistics.error",
+            request_id=getattr(g, "request_id", None),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/question/markdown", methods=["GET"])
+@app.route("/question/markdown", methods=["GET"])  # 兼容代理路径
+def get_question_markdown():
+    """获取题目的markdown格式（原始TPO.json格式）
+    可以直接传给大模型使用
+
+    Query参数:
+        question: 题名（字符串），必填
+        format: 返回格式，可选值：
+            - "dict" (默认): 返回字典格式 {"instruction": "...", "teacher": "...", "students": [...]}
+            - "string": 返回完整字符串格式
+
+    Returns:
+        JSON: markdown格式的题目数据
+    """
+    try:
+        question_name = request.args.get("question")
+        if not question_name:
+            return jsonify({"error": "参数 'question' 是必需的"}), 400
+
+        format_type = request.args.get("format", "dict").lower()
+
+        question_bank = get_question_bank()
+        result = question_bank.get_question_markdown(
+            question_id=question_name,
+            only_valid=True,
+            as_string=(format_type == "string"),
+        )
+
+        if result is None:
+            return jsonify({"error": f"题目不存在或无效: {question_name}"}), 404
+
+        if format_type == "string":
+            return jsonify({"markdown": result}), 200
+        else:
+            return jsonify(result), 200
+    except Exception as e:
+        log_event(
+            "get_question_markdown.error",
+            request_id=getattr(g, "request_id", None),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/question", methods=["GET"])
 @app.route("/question", methods=["GET"])  # 兼容代理路径
 def get_question():
     """获取题目数据
-    从 YAML 文件加载题目数据并返回
+    从题库加载题目数据
 
     Query参数:
-        file: 可选，文件名，默认为 "test.yaml"
+        question: 题名（字符串），必填
 
     Returns:
         JSON: 题目数据，格式如下：
         {
+            "id": "44",
             "subject": "sociology",
+            "instruction": "...",
             "professor": {
                 "name": "Doctor Achebe",
                 "avatar": "",
@@ -327,57 +435,42 @@ def get_question():
         }
     """
     try:
-        from model import load_question
+        question_name = request.args.get("question")
+        if not question_name:
+            return jsonify({"error": "参数 'question' 是必需的"}), 400
 
-        file_name = request.args.get("file", "test.yaml")
-        question_data = load_question(file_name)
+        question_bank = get_question_bank()
+        question = question_bank.get_question(question_name, only_valid=True)
 
-        # 从YAML格式转换为前端需要的格式
-        result = {
-            "subject": "unknown",
-            "professor": {
-                "name": "Professor",
-                "avatar": "",
-                "prompt": question_data.get("teacher", ""),
-            },
-            "students": [],
-        }
-
-        # 解析学生回复
-        students_text = question_data.get("students", [])
-        for i, student_text in enumerate(students_text):
-            # 尝试从文本中提取学生名称
-            name_match = re.search(r"\*\*Student\s+\d+\s*\(([^)]+)\):", student_text)
-            student_name = name_match.group(1) if name_match else f"Student {i+1}"
-            # 移除标记
-            response_text = re.sub(
-                r"\*\*Student\s+\d+\s*\([^)]+\):\s*", "", student_text
-            ).strip()
-
-            result["students"].append(
-                {"name": student_name, "avatar": "", "response": response_text}
-            )
-
-        # 解析教授名称
-        teacher_text = question_data.get("teacher", "")
-        prof_match = re.search(r"\*\*Professor\s*\(([^)]+)\):", teacher_text)
-        if prof_match:
-            result["professor"]["name"] = prof_match.group(1)
-            result["professor"]["prompt"] = re.sub(
-                r"\*\*Professor\s*\([^)]+\):\s*", "", teacher_text
-            ).strip()
+        if not question:
+            return jsonify({"error": f"题目不存在或无效: {question_name}"}), 404
 
         # 解析subject（从instruction中提取）
-        instruction = question_data.get("instruction", "")
+        instruction = question.instruction
         subject_match = re.search(
             r"teaching a class on (\w+)", instruction, re.IGNORECASE
         )
-        if subject_match:
-            result["subject"] = subject_match.group(1)
+        subject = subject_match.group(1) if subject_match else "unknown"
 
+        result = {
+            "id": question.id,
+            "subject": subject,
+            "instruction": question.instruction,
+            "professor": {
+                "name": question.teacher,
+                "avatar": "",
+                "prompt": question.teacher_content,
+            },
+            "students": [
+                {
+                    "name": student.get("name", ""),
+                    "avatar": "",
+                    "response": student.get("content", ""),
+                }
+                for student in question.students
+            ],
+        }
         return jsonify(result), 200
-    except FileNotFoundError as e:
-        return jsonify({"error": str(e)}), 404
     except Exception as e:
         log_event(
             "get_question.error",
@@ -396,16 +489,19 @@ def grade_and_polish_sync():
     请求体示例:
     {
         "answer": "...学生作文...",
-        "question_file": "test.yaml"   # 可选，默认 test.yaml
+        "question": "44"   # 题名（字符串），必填
     }
     如果用户已登录（通过Authorization header传递JWT token），会自动保存历史记录
     """
     data = request.get_json(silent=True) or {}
     answer = data.get("answer")
-    question_file = data.get("question_file", "test.yaml")
+    question = data.get("question")
 
     if not answer:
         return jsonify({"error": "field 'answer' is required"}), 400
+
+    if not question:
+        return jsonify({"error": "field 'question' is required"}), 400
 
     # 尝试获取当前用户（可选，未登录也能使用）
     current_user = None
@@ -416,7 +512,7 @@ def grade_and_polish_sync():
         pass
 
     try:
-        evaluator = Evaluator(question_file=question_file)
+        evaluator = Evaluator(question=question)
         comment = evaluator.generate_response(answer)
 
         polisher = Polisher(answer, comment)
@@ -428,7 +524,7 @@ def grade_and_polish_sync():
                 save_history(
                     user_id=current_user.id,
                     answer=answer,
-                    question_file=question_file,
+                    question_file=question,  # 保存题名
                     comment=comment,
                     polished_answer=polished_answer,
                 )
@@ -446,7 +542,7 @@ def grade_and_polish_sync():
             "grade_and_polish_sync.error",
             request_id=getattr(g, "request_id", None),
             error=str(e),
-            question_file=question_file,
+            question=question,
             user_id=current_user.id if current_user else None,
         )
         return jsonify({"error": str(e)}), 500
@@ -459,16 +555,19 @@ def grade_and_polish():
     请求体示例:
     {
         "answer": "...学生作文...",
-        "question_file": "test.yaml"   # 可选，默认 test.yaml
+        "question": "44"   # 题名（字符串），必填
     }
     如果用户已登录（通过Authorization header传递JWT token），会自动保存历史记录
     """
     data = request.get_json(silent=True) or {}
     answer = data.get("answer")
-    question_file = data.get("question_file", "test.yaml")
+    question = data.get("question")
 
     if not answer:
         return jsonify({"error": "field 'answer' is required"}), 400
+
+    if not question:
+        return jsonify({"error": "field 'question' is required"}), 400
 
     # 尝试获取当前用户（可选，未登录也能使用）
     current_user = None
@@ -484,7 +583,7 @@ def grade_and_polish():
             log_event(
                 "grade_and_polish.start",
                 request_id=getattr(g, "request_id", None),
-                question_file=question_file,
+                question=question,
                 user_id=current_user.id if current_user else None,
             )
 
@@ -495,7 +594,7 @@ def grade_and_polish():
                     success, message, history = save_history(
                         user_id=current_user.id,
                         answer=answer,
-                        question_file=question_file,
+                        question_file=question,  # 保存题名
                         comment="",  # 暂时为空，后续更新
                         polished_answer="",  # 暂时为空，后续更新
                     )
@@ -515,7 +614,7 @@ def grade_and_polish():
             # 发送开始评估通知
             yield f"data: {json.dumps({'type': 'status', 'stage': 'evaluating', 'message': '开始评估作文...'})}\n\n"
 
-            evaluator = Evaluator(question_file=question_file)
+            evaluator = Evaluator(question=question)
             comment_stream = evaluator.generate_response(answer, stream=True)
 
             # 流式接收评估结果
@@ -582,7 +681,7 @@ def grade_and_polish():
             log_event(
                 "grade_and_polish.done",
                 request_id=getattr(g, "request_id", None),
-                question_file=question_file,
+                question=question,
                 comment_chars=len(comment),
                 polished_chars=len(polished_answer),
                 user_id=current_user.id if current_user else None,
@@ -593,7 +692,7 @@ def grade_and_polish():
                 "grade_and_polish.error",
                 request_id=getattr(g, "request_id", None),
                 error=str(e),
-                question_file=question_file,
+                question=question,
                 user_id=current_user.id if current_user else None,
             )
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -650,7 +749,8 @@ def get_grade_and_polish_stream(history_id):
     # 如果还没有完整结果，重新执行评分
     def generate():
         try:
-            evaluator = Evaluator(question_file=history.question_file)
+            # history.question_file现在统一为题名
+            evaluator = Evaluator(question=history.question_file)
             comment_stream = evaluator.generate_response(history.answer, stream=True)
 
             comment = ""

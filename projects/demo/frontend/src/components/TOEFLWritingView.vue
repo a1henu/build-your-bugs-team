@@ -222,55 +222,55 @@ const handleSubmit = () => {
 		text: essayText.value,
 		wordCount: wordCount.value,
 		timeSpent: 600 - timeRemaining.value,
-		questionFile: questionFile.value,
+		question: question.value,
 	});
 };
 
 // 加载题目数据
-const loadQuestion = async (file: string = "test.yaml") => {
+const loadQuestion = async (q: string) => {
 	try {
-		questionData.value = await getQuestionData(file);
+		questionData.value = await getQuestionData(q);
 	} catch (error) {
 		console.error("Failed to load question:", error);
 	}
 };
 
-// 组件内部管理题目文件
-const questionFile = ref("test.yaml");
+// 组件内部管理题名
+const question = ref("");
 
 // 定义props（用于接收初始值）
 const props = defineProps<{
-	initialQuestionFile?: string;
+	initialQuestion?: string;
 }>();
 
 // 如果提供了初始值，使用它
-if (props.initialQuestionFile) {
-	questionFile.value = props.initialQuestionFile;
+if (props.initialQuestion) {
+	question.value = props.initialQuestion;
 }
 
-// 监听questionFile变化并加载题目
+// 监听question变化并加载题目
 watch(
-	() => questionFile.value,
-	(newFile) => {
-		if (newFile) {
-			loadQuestion(newFile);
+	() => question.value,
+	(newQuestion) => {
+		if (newQuestion) {
+			loadQuestion(newQuestion);
 		}
 	},
 	{ immediate: true }
 );
 
-// 暴露方法供外部设置题目文件
+// 暴露方法供外部设置题名
 defineExpose({
-	setQuestionFile: (file: string) => {
-		questionFile.value = file;
-		loadQuestion(file);
+	setQuestion: (q: string) => {
+		question.value = q;
+		loadQuestion(q);
 	},
 });
 
 // 组件挂载
 onMounted(() => {
-	if (questionFile.value) {
-		loadQuestion(questionFile.value);
+	if (question.value) {
+		loadQuestion(question.value);
 	}
 	startTimer();
 });
@@ -290,7 +290,7 @@ const emit = defineEmits<{
 			text: string;
 			wordCount: number;
 			timeSpent: number;
-			questionFile: string;
+			question: string;
 		}
 	): void;
 }>();

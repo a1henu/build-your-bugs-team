@@ -2,7 +2,7 @@
 
 export interface GradeAndPolishRequest {
 	answer: string;
-	question_file?: string;
+	question: string;
 }
 
 export interface GradeAndPolishResponse {
@@ -61,7 +61,7 @@ function getAuthHeaders(): HeadersInit {
  */
 export async function gradeAndPolishStream(
 	answer: string,
-	questionFile: string = "test.yaml",
+	question: string,
 	onEvent: StreamCallback
 ): Promise<number | null> {
 	const response = await fetch(`${API_BASE_URL}/grade_and_polish`, {
@@ -69,7 +69,7 @@ export async function gradeAndPolishStream(
 		headers: getAuthHeaders(),
 		body: JSON.stringify({
 			answer,
-			question_file: questionFile,
+			question: question,
 		}),
 	});
 
@@ -237,12 +237,11 @@ export async function getQuestionFileList(): Promise<{ files: string[] }> {
 
 /**
  * 获取题目数据
- * @param file 文件名，默认为 'test.yaml'
+ * @param question 题名（字符串），必填
  */
-export async function getQuestionData(
-	file: string = "test.yaml"
-): Promise<QuestionData> {
-	const params = new URLSearchParams({ file });
+export async function getQuestionData(question: string): Promise<QuestionData> {
+	const params = new URLSearchParams();
+	params.append("question", question);
 	const response = await fetch(`${API_BASE_URL}/question?${params.toString()}`);
 	if (!response.ok) {
 		const error: ApiError = await response.json().catch(() => ({

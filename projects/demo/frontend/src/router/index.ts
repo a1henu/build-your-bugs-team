@@ -20,7 +20,7 @@ const router = createRouter({
 			name: "write",
 			component: TOEFLWritingView,
 			props: (route) => ({
-				initialQuestionFile: (route.query.question as string) || "test.yaml",
+				initialQuestion: (route.query.question as string) || "",
 			}),
 		},
 		{

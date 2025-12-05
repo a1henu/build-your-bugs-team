@@ -91,7 +91,7 @@ const handleWritingSubmit = async (data: {
 	text: string;
 	wordCount: number;
 	timeSpent: number;
-	questionFile: string;
+	question: string;
 }) => {
 	loading.value = true;
 	error.value = null;
@@ -100,7 +100,7 @@ const handleWritingSubmit = async (data: {
 		// 发送评分请求，获取历史记录ID
 		const historyId = await gradeAndPolishStream(
 			data.text,
-			data.questionFile,
+			data.question,
 			(event: StreamEvent) => {
 				// 收到 history_id 后，导航到历史记录页面
 				if (event.type === "history_id" && event.history_id) {
