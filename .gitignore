@@ -51,3 +51,5 @@ vendor/
 projects/demo/__pycache__/
 projects/demo/frontend/package-lock.json
 projects/demo/log
+projects/demo/instance/app.db
+projects/demo/frontend/raw.html

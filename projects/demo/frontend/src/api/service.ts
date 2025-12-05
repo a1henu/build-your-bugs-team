@@ -2,7 +2,7 @@
 
 export interface GradeAndPolishRequest {
 	answer: string;
-	question_file?: string;
+	question: string;
 }
 
 export interface GradeAndPolishResponse {
@@ -33,6 +33,8 @@ export interface StreamEvent {
 		| "comment_complete"
 		| "polished_chunk"
 		| "polished_complete"
+		| "history_saved"
+		| "history_id"
 		| "done"
 		| "error";
 	stage?: "evaluating" | "polishing";
@@ -42,6 +44,7 @@ export interface StreamEvent {
 	parsed_comment?: ParsedComment;
 	data?: Partial<ParsedComment>; // 用于 comment_parsed 事件的增量更新
 	polished_answer?: string;
+	history_id?: number;
 }
 
 // 流式回调类型
@@ -53,21 +56,33 @@ export type StreamCallback = (event: StreamEvent) => void;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 /**
- * 流式调用评分和润色接口
+ * 获取认证头
+ */
+function getAuthHeaders(): HeadersInit {
+	const token = localStorage.getItem("access_token");
+	const headers: HeadersInit = {
+		"Content-Type": "application/json",
+	};
+	if (token) {
+		headers.Authorization = `Bearer ${token}`;
+	}
+	return headers;
+}
+
+/**
+ * 流式调用评分和润色接口（返回历史记录ID）
  */
 export async function gradeAndPolishStream(
 	answer: string,
-	questionFile: string = "test.yaml",
+	question: string,
 	onEvent: StreamCallback
-): Promise<void> {
+): Promise<number | null> {
 	const response = await fetch(`${API_BASE_URL}/grade_and_polish`, {
 		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-		},
+		headers: getAuthHeaders(),
 		body: JSON.stringify({
 			answer,
-			question_file: questionFile,
+			question: question,
 		}),
 	});
 
@@ -98,23 +113,72 @@ export async function gradeAndPolishStream(
 			for (const line of lines) {
 				if (line.startsWith("data: ")) {
 					try {
-						const data = JSON.parse(line.slice(6));
-						onEvent(data);
+						const data = JSON.parse(line.substring(6));
+						onEvent(data as StreamEvent);
+						// 如果是 history_id 事件，返回ID
+						if (data.type === "history_id" && data.history_id) {
+							return data.history_id;
+						}
 					} catch (e) {
 						console.error("Failed to parse SSE data:", e, line);
 					}
 				}
 			}
 		}
+	} finally {
+		reader.releaseLock();
+	}
+	return null;
+}
 
-		// 处理剩余的 buffer
-		if (buffer.trim()) {
-			if (buffer.startsWith("data: ")) {
-				try {
-					const data = JSON.parse(buffer.slice(6));
-					onEvent(data);
-				} catch (e) {
-					console.error("Failed to parse SSE data:", e, buffer);
+/**
+ * 通过历史记录ID流式获取评分结果
+ * 支持UUID（字符串）或user_sequence（数字）作为ID
+ */
+export async function gradeAndPolishStreamById(
+	historyId: string | number,
+	onEvent: StreamCallback
+): Promise<void> {
+	const response = await fetch(
+		`${API_BASE_URL}/grade_and_polish/${historyId}`,
+		{
+			method: "GET",
+			headers: getAuthHeaders(),
+		}
+	);
+
+	if (!response.ok) {
+		const error: ApiError = await response.json().catch(() => ({
+			error: `HTTP error! status: ${response.status}`,
+		}));
+		throw new Error(error.error || `HTTP error! status: ${response.status}`);
+	}
+
+	if (!response.body) {
+		throw new Error("Response body is null");
+	}
+
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			buffer += decoder.decode(value, { stream: true });
+			const lines = buffer.split("\n\n");
+			buffer = lines.pop() || ""; // 保留最后一个不完整的行
+
+			for (const line of lines) {
+				if (line.startsWith("data: ")) {
+					try {
+						const data = JSON.parse(line.substring(6));
+						onEvent(data as StreamEvent);
+					} catch (e) {
+						console.error("Failed to parse SSE data:", e, line);
+					}
 				}
 			}
 		}
@@ -146,4 +210,57 @@ export async function downloadTelemetryLog(): Promise<Blob> {
 		throw new Error(error.error || `HTTP error! status: ${response.status}`);
 	}
 	return await response.blob();
+}
+
+/**
+ * 题目数据接口
+ */
+export interface QuestionData {
+	subject: string;
+	professor: {
+		name: string;
+		avatar: string;
+		prompt: string;
+	};
+	students: Array<{
+		name: string;
+		avatar: string;
+		response: string;
+	}>;
+}
+
+/**
+ * 通过ID获取历史记录（从history API导入）
+ */
+export { getHistoryById } from "./history";
+
+/**
+ * 获取题目文件列表
+ */
+export async function getQuestionFileList(): Promise<{ files: string[] }> {
+	const response = await fetch(`${API_BASE_URL}/question/list`);
+	if (!response.ok) {
+		const error: ApiError = await response.json().catch(() => ({
+			error: `HTTP error! status: ${response.status}`,
+		}));
+		throw new Error(error.error || `HTTP error! status: ${response.status}`);
+	}
+	return await response.json();
+}
+
+/**
+ * 获取题目数据
+ * @param question 题名（字符串），必填
+ */
+export async function getQuestionData(question: string): Promise<QuestionData> {
+	const params = new URLSearchParams();
+	params.append("question", question);
+	const response = await fetch(`${API_BASE_URL}/question?${params.toString()}`);
+	if (!response.ok) {
+		const error: ApiError = await response.json().catch(() => ({
+			error: `HTTP error! status: ${response.status}`,
+		}));
+		throw new Error(error.error || `HTTP error! status: ${response.status}`);
+	}
+	return await response.json();
 }
