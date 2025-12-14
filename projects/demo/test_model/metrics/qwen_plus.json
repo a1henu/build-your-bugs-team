@@ -1,0 +1,95 @@
+{
+  "model": "qwen-plus",
+  "samples": 8,
+  "metrics": {
+    "exact_acc": 0.625,
+    "mae": 0.375,
+    "mse": 0.375,
+    "bias": 0.375,
+    "spearman": 0.9750761808025541,
+    "order_non_violation": true
+  },
+  "polisher": {
+    "non_drop_rate": 1.0,
+    "improve_rate": 0.75,
+    "avg_delta": 1.5,
+    "min_delta": 0,
+    "max_delta": 4
+  },
+  "confusion": {
+    "1": {
+      "2": 1,
+      "1": 1
+    },
+    "2": {
+      "3": 1
+    },
+    "3": {
+      "4": 1
+    },
+    "4": {
+      "4": 2
+    },
+    "5": {
+      "5": 2
+    }
+  },
+  "details": [
+    {
+      "path": "test_answer/44_1_1.txt",
+      "expected": 1,
+      "pred": 2,
+      "polished_pred": 5,
+      "delta": 3
+    },
+    {
+      "path": "test_answer/44_1_2.txt",
+      "expected": 1,
+      "pred": 1,
+      "polished_pred": 5,
+      "delta": 4
+    },
+    {
+      "path": "test_answer/44_2_1.txt",
+      "expected": 2,
+      "pred": 3,
+      "polished_pred": 5,
+      "delta": 2
+    },
+    {
+      "path": "test_answer/44_3_1.txt",
+      "expected": 3,
+      "pred": 4,
+      "polished_pred": 5,
+      "delta": 1
+    },
+    {
+      "path": "test_answer/44_4_1.txt",
+      "expected": 4,
+      "pred": 4,
+      "polished_pred": 5,
+      "delta": 1
+    },
+    {
+      "path": "test_answer/44_4_2.txt",
+      "expected": 4,
+      "pred": 4,
+      "polished_pred": 5,
+      "delta": 1
+    },
+    {
+      "path": "test_answer/44_5_1.txt",
+      "expected": 5,
+      "pred": 5,
+      "polished_pred": 5,
+      "delta": 0
+    },
+    {
+      "path": "test_answer/44_5_2.txt",
+      "expected": 5,
+      "pred": 5,
+      "polished_pred": 5,
+      "delta": 0
+    }
+  ]
+}

@@ -114,6 +114,7 @@ def update_confusion(cm: Dict, y_true: int, y_pred: int):
 def main():
     argp = argparse.ArgumentParser(description="Evaluate grading/polishing models on local samples (direct LLM calls).")
     argp.add_argument("config", help="YAML config path (LLM base_url/api_key/model)")
+    argp.add_argument("-o", "--output", help="Path to save JSON report")
     args = argp.parse_args()
 
     cfg = load_config(args.config)
@@ -206,7 +207,14 @@ def main():
         "details": records,
     }
 
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    report_json = json.dumps(report, ensure_ascii=False, indent=2)
+    print(report_json)
+
+    output_path = args.output or cfg.get("output")
+    if output_path:
+        out_file = Path(output_path)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(report_json, encoding="utf-8")
 
 
 if __name__ == "__main__":

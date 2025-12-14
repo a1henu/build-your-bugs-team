@@ -32,4 +32,45 @@ cp test_model/config.example.yaml test_model/config.local.yaml
 python test_model/eval_models.py test_model/config.local.yaml
 ```
 
+示例输出（已裁剪）：
+
+```json
+{
+  "model": "qwen-plus",
+  "samples": 8,
+  "metrics": {
+    "exact_acc": 0.5,
+    "mae": 0.625,
+    "mse": 0.875,
+    "bias": 0.625,
+    "spearman": 0.8460,
+    "order_non_violation": false
+  },
+  "polisher": {
+    "non_drop_rate": 1.0,
+    "improve_rate": 0.5,
+    "avg_delta": 1.25,
+    "min_delta": 0,
+    "max_delta": 4
+  },
+  "confusion": { "...": "..." },
+  "details": [ { "path": "...", "expected": 1, "pred": 2, "polished_pred": 5, "delta": 3 }, ... ]
+}
+```
+
+指标释义（↑ 越大越好，↓ 越小越好）：
+
+- `exact_acc` ↑：预测分数与期望分完全一致的比例。
+- `mae` ↓：平均绝对误差。
+- `mse` ↓：均方误差。
+- `bias` 绝对值↓：平均预测-真实，>0 表示整体偏高，<0 偏低。
+- `spearman` ↑：Spearman 排序相关；越接近 1 排序越一致，负值表示逆序。
+- `order_non_violation` ↑：是否完全无排序违例（布尔）。
+- `non_drop_rate` ↑：润色后分数未下降的比例。
+- `improve_rate` ↑：润色后分数提升的比例。
+- `avg_delta`：润色后分数变化均值，>0 平均提升。
+- `min_delta`/`max_delta`：润色后分数变化的最小/最大值，关注是否有负值。
+- `confusion`：真实分 -> 预测分的计数矩阵，便于看偏差方向。
+- `details`：每条样本的路径、期望分、预测分、润色后分和分差。
+
 脚本会把指标和每条样本的评分结果以 JSON 打印到终端。需要更多样本时，按 `question_score_variant` 规则新增文件即可。
