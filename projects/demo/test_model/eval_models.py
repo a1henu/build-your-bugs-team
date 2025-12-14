@@ -14,10 +14,15 @@ import math
 import os
 import re
 import statistics
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from model import CommentParser, Evaluator, Polisher
 
@@ -33,7 +38,7 @@ def parse_sample_path(path: str) -> Tuple[str, int, int]:
     约定文件名形如：44_5_2.txt
     """
     stem = Path(path).stem
-    m = re.match(r"(\\d+)_(\\d+)_(\\d+)", stem)
+    m = re.match(r"(\d+)_(\d+)_(\d+)", stem)
     if not m:
         raise ValueError(f"Unexpected filename format: {path}")
     qid, expected, variant = m.groups()
