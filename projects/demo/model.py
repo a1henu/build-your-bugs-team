@@ -340,7 +340,7 @@ class Evaluator:
 
     def generate_response(self, answer: str, stream: bool = False):
         # 允许通过环境变量覆盖模型配置
-        model_name = os.getenv("DASHSCOPE_MODEL", "qwen-plus")
+        model_name = os.getenv("DASHSCOPE_MODEL", "mimo-v2-flash")
         base_url = os.getenv(
             "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
@@ -379,7 +379,7 @@ class Polisher:
         return prompt
 
     def generate_response(self, stream: bool = False):
-        model_name = os.getenv("DASHSCOPE_MODEL", "qwen-plus")
+        model_name = os.getenv("DASHSCOPE_MODEL", "mimo")
         base_url = os.getenv(
             "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
